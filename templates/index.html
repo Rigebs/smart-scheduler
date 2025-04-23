@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Generador de Horarios</title>
+    <link rel="stylesheet" href="/static/css/style.css" />
+  </head>
+  <body>
+    <h1>Generador Inteligente de Horarios</h1>
+    <form method="POST">
+      <label for="materias">Materias (separadas por coma):</label><br />
+      <input
+        type="text"
+        name="materias"
+        id="materias"
+        placeholder="Matemáticas, Física, Química"
+      /><br /><br />
+      <button type="submit">Generar Horario</button>
+    </form>
+
+    {% if resultado %}
+    <h2>Horario generado:</h2>
+    <ul>
+      {% for materia, info in resultado.items() %}
+      <li>
+        <strong>{{ materia }}</strong>: {{ info.dia }} a las {{ info.hora }}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </body>
+</html>
