@@ -1,2 +1,23 @@
-**/__pycache__/
-*.pyc
+# Ignora compilados de Python
+__pycache__/
+*.py[cod]
+
+# Entorno virtual
+venv/
+env/
+
+# Archivos de configuración del editor
+.vscode/
+.idea/
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de logs y caché
+*.log
+*.sqlite3
+.cache/
+
+# Otros
+*.env
