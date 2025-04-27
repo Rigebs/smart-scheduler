@@ -1,20 +1,26 @@
 # app/models.py
 from app import db
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin
 
-# Definimos un modelo de Usuario
-class Usuario(db.Model):
+# Usuario
+class Usuario(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(100), nullable=False)
-    preferencias = db.Column(db.JSON, nullable=True)
+    nombre = db.Column(db.String(64), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
 
-    def __repr__(self):
-        return f'<Usuario {self.nombre}>'
+    materias = db.relationship('Materia', backref='usuario', lazy=True)
 
-# Definimos un modelo de Materia
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
 class Materia(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(100), nullable=False)
+    nombre = db.Column(db.String(120), nullable=False)
     prioridad = db.Column(db.Integer, nullable=False)
 
-    def __repr__(self):
-        return f'<Materia {self.nombre}>'
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)

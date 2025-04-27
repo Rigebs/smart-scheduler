@@ -1,15 +1,76 @@
-## routes.py
+# routes.py
+from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask_login import login_user, login_required, logout_user, current_user
 
-from app import app, db
-from flask import render_template, request
-from app.models import Materia
-from app.scheduler import generar_horario  # si tienes la lógica en otro archivo
+from app import db, login
+from app.models import Usuario, Materia
+from app.scheduler import generar_horario
 
-@app.route("/")
+routes = Blueprint("routes", __name__)
+
+@routes.route("/")
 def index():
     return render_template("index.html")
 
-@app.route("/add_materia", methods=["POST"])
+@routes.route("/login", methods=["GET", "POST"])
+def login_view():
+    if request.method == "POST":
+        email = request.form["email"]
+        password = request.form["password"]
+        usuario = Usuario.query.filter_by(email=email).first()
+
+        # Verifica las credenciales
+        if usuario and usuario.check_password(password):
+            login_user(usuario)
+            return redirect(url_for("routes.perfil"))
+        else:
+            flash("Correo electrónico o contraseña incorrectos", "danger")
+    
+    return render_template("auth/login.html")
+
+@routes.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        nombre = request.form["nombre"]
+        email = request.form["email"]
+        password = request.form["password"]
+        password_confirm = request.form["password_confirm"]
+
+        if password != password_confirm:
+            flash("Las contraseñas no coinciden", "danger")
+            return redirect(url_for("routes.register"))
+
+        if Usuario.query.filter_by(email=email).first():
+            flash("El correo electrónico ya está registrado", "danger")
+            return redirect(url_for("routes.register"))
+
+        nuevo_usuario = Usuario(nombre=nombre, email=email)
+        nuevo_usuario.set_password(password)
+
+        db.session.add(nuevo_usuario)
+        db.session.commit()
+
+        flash("Cuenta creada exitosamente, por favor inicia sesión", "success")
+        return redirect(url_for("routes.login_view"))
+
+    return render_template("register.html")
+
+@routes.route("/perfil")
+@login_required
+def perfil():
+    return render_template("profile.html", usuario=current_user)
+
+@routes.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("routes.login_view"))
+
+@login.user_loader
+def load_user(user_id):
+    return Usuario.query.get(int(user_id))
+
+@routes.route("/add_materia", methods=["POST"])
 def add_materia():
     nombre = request.form["nombre"]
     prioridad = int(request.form["prioridad"])
@@ -20,19 +81,16 @@ def add_materia():
     
     return "Materia añadida"
 
-@app.route("/generar_horario", methods=["POST"])
+@routes.route("/generar_horario", methods=["POST"])
 def generar_horario_route():
-    # Obtener las materias y las prioridades del formulario
     materias_input = request.form.get("materias", "").split(",")
     prioridades_input = request.form.get("prioridades", "").split(",")
     
-    # Convertir el input de prioridades en un diccionario
     prioridades = {}
     for prioridad in prioridades_input:
         materia, valor = prioridad.split(":")
         prioridades[materia.strip()] = int(valor.strip())
     
-    # Llamar a la función generar_horario con las materias y prioridades proporcionadas
     horario = generar_horario(materias_input, prioridades)
     
     return render_template("index.html", resultado=horario)
