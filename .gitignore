@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 
 # Entorno virtual
-venv/
+.venv/
 env/
 
 # Archivos de configuración del editor

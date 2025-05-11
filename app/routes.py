@@ -1,96 +1,58 @@
-# routes.py
-from flask import Blueprint, render_template, redirect, url_for, flash, request
-from flask_login import login_user, login_required, logout_user, current_user
+from flask import Blueprint, request, jsonify
+from .scheduler import algoritmo_genetico
 
-from app import db, login
-from app.models import Usuario, Materia
-from app.scheduler import generar_horario
+import re
 
-routes = Blueprint("routes", __name__)
+# Función para convertir camelCase a snake_case
+def camel_to_snake(camel_str):
+    # Convierte la cadena camelCase a snake_case
+    return re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', camel_str).lower()
 
-@routes.route("/")
-def index():
-    return render_template("index.html")
+def snake_to_camel(snake_str):
+    components = snake_str.split('_')
+    # El primer componente lo dejamos en minúsculas, y los demás los ponemos con la primera letra en mayúsculas
+    return components[0] + ''.join(x.title() for x in components[1:])
 
-@routes.route("/login", methods=["GET", "POST"])
-def login_view():
-    if request.method == "POST":
-        email = request.form["email"]
-        password = request.form["password"]
-        usuario = Usuario.query.filter_by(email=email).first()
-
-        # Verifica las credenciales
-        if usuario and usuario.check_password(password):
-            login_user(usuario)
-            return redirect(url_for("routes.perfil"))
-        else:
-            flash("Correo electrónico o contraseña incorrectos", "danger")
+def convert_keys_to_camel_case(d):
+    if isinstance(d, dict):
+        return {snake_to_camel(k): convert_keys_to_camel_case(v) for k, v in d.items()}
+    elif isinstance(d, list):
+        return [convert_keys_to_camel_case(item) for item in d]
+    else:
+        return d
     
-    return render_template("auth/login.html")
 
-@routes.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        nombre = request.form["nombre"]
-        email = request.form["email"]
-        password = request.form["password"]
-        password_confirm = request.form["password_confirm"]
+# Función para convertir todas las claves de un diccionario de camelCase a snake_case
+def convert_keys_to_snake_case(d):
+    if isinstance(d, dict):
+        return {camel_to_snake(k): convert_keys_to_snake_case(v) for k, v in d.items()}
+    elif isinstance(d, list):
+        return [convert_keys_to_snake_case(item) for item in d]
+    else:
+        return d
 
-        if password != password_confirm:
-            flash("Las contraseñas no coinciden", "danger")
-            return redirect(url_for("routes.register"))
+api = Blueprint('api', __name__)
+@api.route('/generate-schedule', methods=['POST'])
+def generar_horario():
+    # Obtener los datos JSON enviados en la solicitud POST
+    data = request.get_json()
 
-        if Usuario.query.filter_by(email=email).first():
-            flash("El correo electrónico ya está registrado", "danger")
-            return redirect(url_for("routes.register"))
+    # Convertir las claves de camelCase a snake_case
+    data = convert_keys_to_snake_case(data)
 
-        nuevo_usuario = Usuario(nombre=nombre, email=email)
-        nuevo_usuario.set_password(password)
+    # Obtener las asignaciones y preferencias del JSON convertido
+    assignments = data.get("assignments", [])
+    preferences = data.get("preferences", {})
 
-        db.session.add(nuevo_usuario)
-        db.session.commit()
+    # Llamar a la función de algoritmo genético con los datos convertidos
+    resultado = algoritmo_genetico(assignments, preferences)
 
-        flash("Cuenta creada exitosamente, por favor inicia sesión", "success")
-        return redirect(url_for("routes.login_view"))
+    # Convertir las claves del resultado de snake_case a camelCase
+    resultado = convert_keys_to_camel_case(resultado)
 
-    return render_template("register.html")
+    print("Resultado:", resultado)
+    return jsonify(resultado)
 
-@routes.route("/perfil")
-@login_required
-def perfil():
-    return render_template("profile.html", usuario=current_user)
-
-@routes.route("/logout")
-@login_required
-def logout():
-    logout_user()
-    return redirect(url_for("routes.login_view"))
-
-@login.user_loader
-def load_user(user_id):
-    return Usuario.query.get(int(user_id))
-
-@routes.route("/add_materia", methods=["POST"])
-def add_materia():
-    nombre = request.form["nombre"]
-    prioridad = int(request.form["prioridad"])
-    
-    nueva_materia = Materia(nombre=nombre, prioridad=prioridad)
-    db.session.add(nueva_materia)
-    db.session.commit()
-    
-    return "Materia añadida"
-
-@routes.route("/generar_horario", methods=["POST"])
-def generar_horario_route():
-    materias_input = request.form.get("materias", "").split(",")
-    prioridades_input = request.form.get("prioridades", "").split(",")
-    
-    prioridades = {}
-    for prioridad in prioridades_input:
-        materia, valor = prioridad.split(":")
-        prioridades[materia.strip()] = int(valor.strip())
-    
-    horario = generar_horario(materias_input, prioridades)
-    
-    return render_template("index.html", resultado=horario)
+@api.route('/hello', methods=['GET'])
+def hello_world():
+    return jsonify({"message": "Hello, World"})
