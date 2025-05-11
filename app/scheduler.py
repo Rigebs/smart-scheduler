@@ -43,31 +43,44 @@ def evaluar_individuo(individuo, preferencias):
     dias_activos = set()
 
     for a in individuo:
+        # Primero, comprobamos si la clase está bloqueada
         if bloqueado(a, preferencias.get("blocked_hours", [])):
             score -= 100
             continue
 
+        # Verificación de días evitados
         if a["day"] in preferencias.get("avoid_days", []):
             score -= 5
+            continue
+
+        # Verificación de la hora de inicio evitada
         if a["start_time"].startswith(preferencias.get("avoid_start_hour", "")):
             score -= 3
+            continue
+
+        # Verificación de si el profesor está en las preferencias
         if any(p in a["professor_name"] for p in preferencias.get("preferred_teachers", [])):
             score += 5
+
+        # Verificación de la modalidad preferida
         if a.get("modalidad", "In-person") in preferencias.get("preferred_modalities", []):
             score += 3
 
+        # Verificación de las horas por día
         dur = duracion(a)
         if horas_por_dia[a["day"]] + dur > preferencias.get("max_hours_per_day", 6):
             score -= 50
         else:
             horas_por_dia[a["day"]] += dur
 
+        # Verificación de superposición con otras clases ya asignadas
         if any(overlap(a, h) for h in horario):
             score -= 50
         else:
             horario.append(a)
             dias_activos.add(a["day"])
 
+    # Verificación de días activos por semana
     if len(dias_activos) < preferencias.get("min_days_per_week", 1):
         score -= 30
     if len(dias_activos) > preferencias.get("max_days_per_week", 7):
@@ -79,71 +92,72 @@ def evaluar_individuo(individuo, preferencias):
 def crear_individuo(cursos):
     individuo = []
     for opciones in cursos.values():
-        # Separar las opciones en T y P
-        teoricas = [o for o in opciones if o["class_type"] == "T"]
-        practicas = [o for o in opciones if o["class_type"] == "P"]
+        # Agrupar clases por profesor
+        clases_por_profesor = defaultdict(list)
+        for clase in opciones:
+            clases_por_profesor[clase["professor_name"]].append(clase)
         
-        # Asegurar que haya al menos una clase teórica (T) y una práctica (P) por curso
-        if teoricas and practicas:
-            # Elegir al menos una clase de cada tipo
-            individuo.append(random.choice(teoricas))
-            individuo.append(random.choice(practicas))
-        elif teoricas:
-            individuo.append(random.choice(teoricas))  # Solo teóricas si no hay prácticas
-        elif practicas:
-            individuo.append(random.choice(practicas))  # Solo prácticas si no hay teóricas
+        # Buscar profesores con ambas clases (T y P)
+        candidatos = []
+        for profe, clases in clases_por_profesor.items():
+            tipos = {c["class_type"] for c in clases}
+            if "T" in tipos and "P" in tipos:
+                candidatos.append((profe, clases))
+        
+        if candidatos:
+            profe_elegido, clases = random.choice(candidatos)
+            teorica = random.choice([c for c in clases if c["class_type"] == "T"])
+            practica = random.choice([c for c in clases if c["class_type"] == "P"])
+            individuo.extend([teorica, practica])
+        else:
+            # Fallback: si ningún profesor tiene ambas, elige lo que haya
+            individuo.append(random.choice(opciones))
     return individuo
 
 # --- Mutación ---
 def mutar(individuo, cursos):
     nuevo = individuo.copy()
-    i = random.randint(0, len(individuo) - 1)
+    curso_indices = list(range(0, len(individuo), 2))
+    i = random.choice(curso_indices)
     curso = individuo[i]["course_id"]
-    nuevo[i] = random.choice(cursos[curso])  # Elegir aleatoriamente un nuevo detalle de clase
+    opciones = cursos[curso]
+
+    clases_por_profesor = defaultdict(list)
+    for clase in opciones:
+        clases_por_profesor[clase["professor_name"]].append(clase)
+    
+    candidatos = []
+    for profe, clases in clases_por_profesor.items():
+        tipos = {c["class_type"] for c in clases}
+        if "T" in tipos and "P" in tipos:
+            candidatos.append((profe, clases))
+    
+    if candidatos:
+        profe_elegido, clases = random.choice(candidatos)
+        teorica = random.choice([c for c in clases if c["class_type"] == "T"])
+        practica = random.choice([c for c in clases if c["class_type"] == "P"])
+        nuevo[i] = teorica
+        nuevo[i + 1] = practica
     return nuevo
 
 # --- Cruce ---
 def cruzar(p1, p2):
-    punto = random.randint(1, len(p1) - 1)
-    
-    # Asegurar que el cruce mantenga al menos un T y un P por curso
+    punto = random.randint(1, len(p1) // 2 - 1) * 2  # Multiplo de 2
     hijo1 = p1[:punto] + p2[punto:]
     hijo2 = p2[:punto] + p1[punto:]
-    
-    # Ajustar ambos hijos para asegurarse de que tengan tanto T como P
-    for idx in range(len(hijo1)):
-        if hijo1[idx]["class_type"] == "T":
-            if not any(c["course_id"] == hijo1[idx]["course_id"] and c["class_type"] == "P" for c in hijo1):
-                # Si no hay práctica para ese curso, agregar una práctica
-                for c in p2:
-                    if c["course_id"] == hijo1[idx]["course_id"] and c["class_type"] == "P":
-                        hijo1.append(c)
-                        break
-        elif hijo1[idx]["class_type"] == "P":
-            if not any(c["course_id"] == hijo1[idx]["course_id"] and c["class_type"] == "T" for c in hijo1):
-                # Si no hay teoría para ese curso, agregar una teoría
-                for c in p2:
-                    if c["course_id"] == hijo1[idx]["course_id"] and c["class_type"] == "T":
-                        hijo1.append(c)
-                        break
-                        
-    for idx in range(len(hijo2)):
-        if hijo2[idx]["class_type"] == "T":
-            if not any(c["course_id"] == hijo2[idx]["course_id"] and c["class_type"] == "P" for c in hijo2):
-                # Si no hay práctica para ese curso, agregar una práctica
-                for c in p1:
-                    if c["course_id"] == hijo2[idx]["course_id"] and c["class_type"] == "P":
-                        hijo2.append(c)
-                        break
-        elif hijo2[idx]["class_type"] == "P":
-            if not any(c["course_id"] == hijo2[idx]["course_id"] and c["class_type"] == "T" for c in hijo2):
-                # Si no hay teoría para ese curso, agregar una teoría
-                for c in p1:
-                    if c["course_id"] == hijo2[idx]["course_id"] and c["class_type"] == "T":
-                        hijo2.append(c)
-                        break
 
-    return hijo1, hijo2
+    def agrupar_por_curso_parejas(ind):
+        cursos_vistos = set()
+        nuevo = []
+        for i in range(0, len(ind), 2):
+            c1, c2 = ind[i], ind[i+1]
+            cid = c1["course_id"]
+            if cid not in cursos_vistos:
+                nuevo.extend([c1, c2])
+                cursos_vistos.add(cid)
+        return nuevo
+
+    return agrupar_por_curso_parejas(hijo1), agrupar_por_curso_parejas(hijo2)
 
 # --- Algoritmo Genético Principal ---
 def algoritmo_genetico(assignments, preferences, generaciones=50, poblacion_size=30, elite=0.2, mutacion_prob=0.1):
@@ -165,4 +179,48 @@ def algoritmo_genetico(assignments, preferences, generaciones=50, poblacion_size
             poblacion.extend([hijo1, hijo2])
 
     mejor = max(poblacion, key=lambda i: evaluar_individuo(i, preferences))
-    return mejor
+
+    # Crear la nueva variable mejor_paralelo
+    mejor_paralelo = []
+    for asignacion in mejor:
+        # Evaluar si la asignación cumple con las preferencias
+        cumple = True
+        mensaje = "Success: Preferences met."
+
+        # Evaluar bloqueos y otras condiciones
+        if bloqueado(asignacion, preferences.get("blocked_hours", [])):
+            cumple = False
+            mensaje = f"Reason: Blocked time on {asignacion['day']} from {asignacion['start_time']} to {asignacion['end_time']}."
+        elif asignacion["day"] in preferences.get("avoid_days", []):
+            cumple = False
+            mensaje = f"Reason: Scheduled on avoided day ({asignacion['day']})."
+        elif asignacion["start_time"].startswith(preferences.get("avoid_start_hour", "")):
+            cumple = False
+            mensaje = f"Reason: Starts at {asignacion['start_time']}, which matches avoided hour prefix ({preferences.get('avoid_start_hour')})."
+        elif preferences.get("preferred_teachers") and not any(p in asignacion["professor_name"] for p in preferences["preferred_teachers"]):
+            cumple = False
+            mensaje = f"Reason: Assigned professor '{asignacion['professor_name']}' is not in preferred list."
+        elif preferences.get("preferred_modalities") and asignacion.get("modalidad", "In-person") not in preferences["preferred_modalities"]:
+            cumple = False
+            mensaje = f"Reason: Modality '{asignacion.get('modalidad', 'In-person')}' is not in preferred modalities."
+
+
+        # Clonar la asignación e insertar los nuevos campos adentro
+        asignacion_con_info = dict(asignacion)  # evitar mutar el original
+        asignacion_con_info["value"] = cumple
+        asignacion_con_info["message"] = mensaje
+
+        # Agregar al resultado
+        mejor_paralelo.append(asignacion_con_info)
+
+    # Imprimir mejor_paralelo
+    for item in mejor_paralelo:
+        
+        # print(f"Class: {item['course_name']}, Professor: {item['professor_name']}")
+        #print(f"Complies: {item['value']}, Message: {item['message']}, Classtype: {item['class_type']}")
+        #print(f"---------------------------------------------------------------")
+
+        print(f"Id: {item['assignment_detail_id']}")
+    
+    # Retornar la mejor asignación encontrada
+    return mejor_paralelo

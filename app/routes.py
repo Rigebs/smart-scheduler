@@ -50,7 +50,6 @@ def generar_horario():
     # Convertir las claves del resultado de snake_case a camelCase
     resultado = convert_keys_to_camel_case(resultado)
 
-    print("Resultado:", resultado)
     return jsonify(resultado)
 
 @api.route('/hello', methods=['GET'])
