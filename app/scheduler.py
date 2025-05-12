@@ -108,6 +108,11 @@ def crear_individuo(cursos):
             profe_elegido, clases = random.choice(candidatos)
             teorica = random.choice([c for c in clases if c["class_type"] == "T"])
             practica = random.choice([c for c in clases if c["class_type"] == "P"])
+
+            # Verificar que las clases T y P no se solapen
+            if overlap(teorica, practica):
+                continue  # Si se solapan, elegir de nuevo
+
             individuo.extend([teorica, practica])
         else:
             # Fallback: si ningún profesor tiene ambas, elige lo que haya
@@ -136,10 +141,14 @@ def mutar(individuo, cursos):
         profe_elegido, clases = random.choice(candidatos)
         teorica = random.choice([c for c in clases if c["class_type"] == "T"])
         practica = random.choice([c for c in clases if c["class_type"] == "P"])
+
+        # Verificar que las clases T y P no se solapen
+        if overlap(teorica, practica):
+            return mutar(individuo, cursos)  # Si se solapan, mutar de nuevo
+
         nuevo[i] = teorica
         nuevo[i + 1] = practica
     return nuevo
-
 # --- Cruce ---
 def cruzar(p1, p2):
     punto = random.randint(1, len(p1) // 2 - 1) * 2  # Multiplo de 2
@@ -153,6 +162,9 @@ def cruzar(p1, p2):
             c1, c2 = ind[i], ind[i+1]
             cid = c1["course_id"]
             if cid not in cursos_vistos:
+                # Verificar que no haya solapamiento en las clases T y P del mismo curso
+                if overlap(c1, c2):
+                    continue  # Si se solapan, ignorar esta asignación
                 nuevo.extend([c1, c2])
                 cursos_vistos.add(cid)
         return nuevo
